@@ -1154,6 +1154,46 @@ export class MetadataService {
     return this.store.createAsset(input);
   }
 
+  /**
+   * Idempotently register an asset from a trusted service callback.
+   * The caller does not provide an owner: the team owner is authoritative.
+   */
+  async ensureAssetForInternal(
+    input: Omit<CreateAssetInput, "owner_user_id">,
+  ): Promise<AssetEntity> {
+    const team = await this.getTeamById(input.team_id);
+    if (!team) throw new MetadataError("team_not_found", `team not found: ${input.team_id}`);
+
+    const existing = await this.getAssetById(input.asset_id);
+    if (existing) {
+      if (existing.team_id !== input.team_id || existing.asset_type !== input.asset_type) {
+        throw new MetadataError(
+          "asset_conflict",
+          `asset ${input.asset_id} belongs to another team or asset type`,
+        );
+      }
+      return existing;
+    }
+
+    try {
+      return await this.createAsset({ ...input, owner_user_id: team.owner_user_id });
+    } catch (err) {
+      // A concurrent callback may have created the same asset. Re-read before
+      // surfacing the original storage error so retries remain idempotent.
+      const raced = await this.getAssetById(input.asset_id);
+      if (raced) {
+        if (raced.team_id !== input.team_id || raced.asset_type !== input.asset_type) {
+          throw new MetadataError(
+            "asset_conflict",
+            `asset ${input.asset_id} belongs to another team or asset type`,
+          );
+        }
+        return raced;
+      }
+      throw err;
+    }
+  }
+
   async getAssetById(assetId: string): Promise<AssetEntity | null> {
     return this.store.getAssetById(assetId);
   }

@@ -195,6 +195,22 @@ export function registerKnowledgeCallbackRoutes(api: Hono, deps: PanelDeps): voi
           if (!detail?.service_url) {
             log.error(`[knowledge-callback] wiki ${body.knowledge_id}: null service_url; skip kernel detail sync`);
           } else {
+            const assetEnv = await deps.kernelHttp.postEnvelope(
+              '/v3/internal/meta/asset/ensure',
+              {
+                asset_id: detail.wiki_id,
+                team_id: detail.team_id,
+                asset_type: 'llm_wiki',
+                name: detail.name,
+                source_type: 'manual',
+                visibility: 'team',
+                content_ref: detail.service_url,
+              },
+              cred,
+            );
+            if (assetEnv.code !== 0) {
+              throw new Error(`wiki meta asset registration failed: ${assetEnv.message}`);
+            }
             log.info('[knowledge-callback] wiki → writing kernel entity', {
               knowledge_id: detail.wiki_id, team_id: detail.team_id, owner: detail.owner_user_id,
               has_summary: !!body.summary,
@@ -209,7 +225,7 @@ export function registerKnowledgeCallbackRoutes(api: Hono, deps: PanelDeps): voi
               user_id: detail.owner_user_id,
             }, cred);
             log.info('[knowledge-callback] wiki → kernel entity written', { knowledge_id: detail.wiki_id });
-            // wiki 的 meta 资产在创建时已注册，callback 不再重复注册。
+            log.info('[knowledge-callback] wiki → meta asset ensured', { knowledge_id: detail.wiki_id });
           }
         } else {
           const detail = await kc.codeGraphGet(body.knowledge_id);
@@ -244,6 +260,7 @@ export function registerKnowledgeCallbackRoutes(api: Hono, deps: PanelDeps): voi
         }
       } catch (err) {
         log.error(`[knowledge-callback] kernel detail sync error for ${body.knowledge_id}: ${(err as Error).message}`);
+        return c.json({ code: 502, message: 'knowledge callback sync failed', request_id: '', data: null }, 502);
       }
     } else if (body.status === 'failed') {
       log.info('[knowledge-callback] failed; not writing entity/meta (UI reads KS status)', { knowledge_id: body.knowledge_id, sync_error: body.sync_error });

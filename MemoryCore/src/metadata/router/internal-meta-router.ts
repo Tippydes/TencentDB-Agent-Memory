@@ -15,7 +15,12 @@ import type { Logger } from "../../core/types.js";
 import { MetadataService, MetadataError } from "../service/metadata-service.js";
 import { extractInstanceId, normalizeInstanceIdForRoute } from "./instance.js";
 import { resolvePagination } from "./pagination.js";
-import { internalListUsersByInstanceSchema, initAdminSchema, instanceUpstreamListSchema } from "./v3-meta-schemas.js";
+import {
+  internalAssetEnsureSchema,
+  internalListUsersByInstanceSchema,
+  initAdminSchema,
+  instanceUpstreamListSchema,
+} from "./v3-meta-schemas.js";
 import {
   createMetaApiTraceContext,
   logMetaApiEntry,
@@ -57,6 +62,10 @@ function bind<S extends ZodType>(
 }
 
 const routeTable: Record<string, InternalHandler> = {
+  [`${V3_INTERNAL_PREFIX}/asset/ensure`]: bind(
+    internalAssetEnsureSchema,
+    (d, svc) => svc.ensureAssetForInternal(d),
+  ),
   [`${V3_INTERNAL_PREFIX}/user/init-admin`]: bind(initAdminSchema, (d, svc) => svc.initAdminUser(d)),
   [`${V3_INTERNAL_PREFIX}/user/list-by-instance`]: bind(
     internalListUsersByInstanceSchema,
@@ -83,6 +92,7 @@ function mapErrorCode(code: string): number {
   if (code === "missing_instance_id" || code === "invalid_instance_id") return 400;
   if (code === "already_initialized" || code === "last_system_admin" || code === "member_already_exists") return 409;
   if (code === "user_limit_exceeded" || code === "team_limit_exceeded") return 409;
+  if (code === "asset_conflict") return 409;
   return 400;
 }
 

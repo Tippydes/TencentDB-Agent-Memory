@@ -292,6 +292,8 @@ export const assetCreateSchema = z.object({
   content_ref: z.string().optional(),
   metadata_json: z.string().optional(),
 });
+/** Trusted service-side asset registration; owner is resolved from team_id. */
+export const internalAssetEnsureSchema = assetCreateSchema.omit({ owner_user_id: true });
 export const assetGetSchema = z.object({ asset_id: nonEmpty });
 export const assetUpdateSchema = z.object({
   asset_id: nonEmpty,
